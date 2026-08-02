@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 bd55faafdf09e3eb2149644a3171ffe9cb26557a Lumora <lumora@local> 1785601198 +0000	commit (initial): Lumora MVP: document → curriculum with active recall, SM-2 spaced repetition, mastery tracking, and source traceability
+bd55faafdf09e3eb2149644a3171ffe9cb26557a 8cf80b634c6c64bdca8b67c23a710d1a9ab108b9 Lumora <lumora@local> 1785603148 +0000	commit: docs: add Termux (Android) setup guide
+8cf80b634c6c64bdca8b67c23a710d1a9ab108b9 0f1b2191d153f71baa86989a480634b5c6a78135 Lumora <lumora@local> 1785608477 +0000	commit: Production hardening: real auth, API layers, security, tests, CI, Docker
+0f1b2191d153f71baa86989a480634b5c6a78135 e4ea4c0e078ec86dd9960010a7968aeb0e1f7fef Lumora <lumora@local> 1785608979 +0000	commit: devtools: developer guide in 5 formats (md, html, pdf, slides, pptx)
+e4ea4c0e078ec86dd9960010a7968aeb0e1f7fef 676f27fe6db4cb31367109e1be1b9a07ac9072b4 Lumora <lumora@local> 1785609586 +0000	commit: cleanup: remove devtools, screenshots, and seed/demo tooling

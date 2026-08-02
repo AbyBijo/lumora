@@ -1,0 +1,14 @@
+cleanup: remove devtools, screenshots, and seed/demo tooling
+
+Removed:
+- devtools/ (developer guides, slides, PDF, PPTX, HTML)
+- assets/screenshots/ (all captured screenshots)
+- scripts/seed.ts + scripts/demo-source.md (no seed/demo data — app starts empty)
+- scripts/screenshots.ts, build-guide.ts, build-pptx.py (generators for removed tooling)
+- dev deps: playwright, marked, pdfkit, @types/bcryptjs
+- package.json scripts: db:seed, demo, shots, guide
+- SEED_* variables from .env.example; assets/screenshots from .dockerignore
+
+Kept (per request): docs/, Docker, CI, tests, smoke.
+smoke.ts is now self-contained (inline fixture instead of demo-source.md).
+README + docs updated to remove all seed/screenshot/devtools references.
