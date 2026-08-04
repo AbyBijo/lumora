@@ -18,7 +18,7 @@ This folder mirrors the Lumora Notion hub (see the
 | [production.md](production.md) | Deployment (Docker/Postgres/Vercel), env matrix, ops |
 | [termux.md](termux.md) | Running Lumora on Android/Termux (proot-distro guide) |
 | [prompts/](prompts/) | Prompt library notes |
-| [adr/](adr/) | Decision log (0001–0007) |
+| [adr/](adr/) | Decision log (0001–0009) |
 
 ## Decision log
 
