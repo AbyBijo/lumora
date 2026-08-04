@@ -1,0 +1,49 @@
+# Lumora — PostgreSQL deployment (production).
+#
+#   cp .env.example .env   # set POSTGRES_PASSWORD, APP_URL, optional LLM keys
+#   docker compose up -d --build
+#
+# Before deploying with Postgres, flip the Prisma datasource provider in
+# prisma/schema.prisma from "sqlite" to "postgresql" (see docs/production.md).
+# The app container runs `prisma migrate deploy` automatically at startup.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lumora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: lumora
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U lumora -d lumora']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://lumora:${POSTGRES_PASSWORD:?}@db:5432/lumora?schema=public
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  db-data:
