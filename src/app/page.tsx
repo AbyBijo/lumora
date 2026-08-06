@@ -1,227 +1,573 @@
-import Link from 'next/link';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import {
-  Sparkles,
-  ArrowRight,
-  FileText,
-  Brain,
-  Repeat,
-  Target,
-  BookMarked,
-  Search,
-  Check,
-  X,
-  Upload,
-  ListTree,
-  Timer,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { getSessionUser } from '@/lib/auth';
+  DocumentSource,
+  StudyActionType,
+  AIProviderConfig,
+  Flashcard,
+  QuizDeck,
+  SummaryData,
+  CornellNotesData,
+  ConceptComparisonData,
+  TimelineEvent,
+  MindMapNode,
+} from '@/shared/types';
+import {
+  createHandbookDocument,
+  getHandbookFlashcards,
+  getHandbookQuiz,
+  getHandbookSummary,
+  getHandbookCornellNotes,
+  getHandbookConceptComparison,
+  getHandbookTimeline,
+  getHandbookMindMap,
+} from '@/shared/lib/handbook-data';
+import { Sidebar } from '@/features/workspace/Sidebar';
+import { DocumentViewer } from '@/features/document-viewer/DocumentViewer';
+import { AIStudio } from '@/features/ai-studio/AIStudio';
+import { FlashcardRunner } from '@/features/study-actions/FlashcardRunner';
+import { QuizRunner } from '@/features/study-actions/QuizRunner';
+import { SummaryView } from '@/features/study-actions/SummaryView';
+import { CornellNotesView } from '@/features/study-actions/CornellNotesView';
+import { ConceptComparisonView } from '@/features/study-actions/ConceptComparisonView';
+import { TimelineView } from '@/features/study-actions/TimelineView';
+import { MindMapView } from '@/features/study-actions/MindMapView';
+import { UploadModal } from '@/features/workspace/UploadModal';
+import { SettingsModal } from '@/features/byok-vault/SettingsModal';
+import { CommandPalette } from '@/features/command-palette/CommandPalette';
+import { ExportModal } from '@/features/export-engine/ExportModal';
+import { AuthModal } from '@/features/auth-modal/AuthModal';
+import { OnboardingModal } from '@/features/onboarding/OnboardingModal';
+import { SpotlightTour } from '@/features/onboarding/SpotlightTour';
+import {
+  IconSidebarLeft,
+  IconSidebarRight,
+  IconZen,
+  IconSearch,
+  IconExport,
+  IconBrainSummary,
+  IconFlashcard,
+  IconQuiz,
+  IconCornellNotes,
+  IconSparkles,
+} from '@/shared/icons';
 
-export const dynamic = 'force-dynamic';
+export default function LumoraWorkspacePage() {
+  const [documents, setDocuments] = useState<DocumentSource[]>([]);
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+  const [targetCitationChunkId, setTargetCitationChunkId] = useState<string | null>(null);
 
-const DIFFERENTIATORS: { feature: string; lumora: string; generic: string }[] = [
-  { feature: 'Document → Curriculum', lumora: 'Structured learning path', generic: 'Unstructured chat' },
-  { feature: 'Active recall', lumora: 'Built-in quizzes & flashcards', generic: 'You must prompt it' },
-  { feature: 'Spaced repetition', lumora: 'Automatic SM-2 scheduling', generic: 'None' },
-  { feature: 'Mastery tracking', lumora: 'Measurable, per-module progress', generic: 'None' },
-  { feature: 'Source traceability', lumora: 'Every claim linked to the source', generic: 'Often hallucinated' },
-  { feature: 'Retention focus', lumora: 'Core primitive, not an afterthought', generic: 'Afterthought' },
-];
+  // Panel collapse states
+  const [isLeftOpen, setIsLeftOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(true);
+  const [isZenMode, setIsZenMode] = useState(false);
 
-const STEPS = [
-  {
-    icon: Upload,
-    title: 'Upload anything',
-    body: 'PDFs, Word docs, text, or a web URL. Lumora parses the document into traceable source chunks.',
-  },
-  {
-    icon: ListTree,
-    title: 'Get a curriculum',
-    body: 'An expert-structured path: modules → lessons → key concepts → learning objectives, all cited to the source.',
-  },
-  {
-    icon: Timer,
-    title: 'Study & recall',
-    body: 'Lesson by lesson, quiz by quiz, with instant feedback and “view in source” on every answer.',
-  },
-  {
-    icon: Target,
-    title: 'Reach mastery',
-    body: 'SM-2 spaced repetition schedules your reviews; the dashboard shows mastery, weak areas, and streaks.',
-  },
-];
+  // Active study action in Right Panel
+  const [activeStudyAction, setActiveStudyAction] = useState<StudyActionType | null>('flashcards');
 
-export default async function LandingPage() {
-  const user = await getSessionUser();
-  const ctaHref = user ? '/dashboard' : '/signin';
-  const ctaLabel = user ? 'Open your dashboard' : 'Start learning free';
+  // Text selection trigger passed to AI Studio
+  const [selectionTrigger, setSelectionTrigger] = useState<{ action: StudyActionType; text: string } | null>(null);
+
+  // Modals state
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isTourActive, setIsTourActive] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  // Active BYOK Config
+  const [activeProvider, setActiveProvider] = useState<AIProviderConfig | null>(null);
+
+  // Initialize Documents from LocalStorage or Handbook Guide
+  useEffect(() => {
+    const savedDocs = localStorage.getItem('lumora_workspace_documents');
+    const hasSeenOnboarding = localStorage.getItem('lumora_has_seen_onboarding_v1');
+
+    if (savedDocs) {
+      try {
+        const parsed = JSON.parse(savedDocs);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setDocuments(parsed);
+          setActiveDocId(parsed[0].id);
+          if (!hasSeenOnboarding) {
+            setIsOnboardingOpen(true);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed parsing saved workspace documents:', err);
+      }
+    }
+
+    // Default clean handbook guide
+    const initialDoc = createHandbookDocument();
+    setDocuments([initialDoc]);
+    setActiveDocId(initialDoc.id);
+    localStorage.setItem('lumora_workspace_documents', JSON.stringify([initialDoc]));
+
+    if (!hasSeenOnboarding) {
+      setIsOnboardingOpen(true);
+    }
+  }, []);
+
+  // Save documents to local storage on changes
+  useEffect(() => {
+    if (documents.length > 0) {
+      localStorage.setItem('lumora_workspace_documents', JSON.stringify(documents));
+    }
+  }, [documents]);
+
+  // Load saved active BYOK provider config
+  useEffect(() => {
+    const savedProvider = localStorage.getItem('lumora_byok_provider_config');
+    if (savedProvider) {
+      try {
+        setActiveProvider(JSON.parse(savedProvider));
+      } catch {}
+    }
+  }, []);
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K / Ctrl+K: Command Palette
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+      // Cmd+\: Toggle Left Sidebar
+      else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === '\\') {
+        e.preventDefault();
+        setIsLeftOpen((prev) => !prev);
+      }
+      // Cmd+Shift+\: Toggle Right Panel
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === '|') {
+        e.preventDefault();
+        setIsRightOpen((prev) => !prev);
+      }
+      // Cmd+Option+Z: Toggle Zen Focus Mode
+      else if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        toggleZenMode();
+      }
+      // Cmd+Shift+F: Open Flashcards
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setActiveStudyAction('flashcards');
+        setIsRightOpen(true);
+      }
+      // Cmd+Shift+Q: Open Quiz
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        setActiveStudyAction('quiz');
+        setIsRightOpen(true);
+      }
+      // Cmd+Shift+S: Open Summary
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setActiveStudyAction('summarize');
+        setIsRightOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isZenMode]);
+
+  const toggleZenMode = () => {
+    if (isZenMode) {
+      setIsZenMode(false);
+      setIsLeftOpen(true);
+      setIsRightOpen(true);
+    } else {
+      setIsZenMode(true);
+      setIsLeftOpen(false);
+      setIsRightOpen(false);
+    }
+  };
+
+  const handleDocumentAdded = (newDoc: DocumentSource) => {
+    setDocuments((prev) => [newDoc, ...prev]);
+    setActiveDocId(newDoc.id);
+  };
+
+  const handleDeleteDocument = (id: string) => {
+    const updated = documents.filter((d) => d.id !== id);
+    setDocuments(updated);
+    if (activeDocId === id) {
+      setActiveDocId(updated[0]?.id || null);
+    }
+  };
+
+  const handleSaveProvider = (provider: AIProviderConfig) => {
+    setActiveProvider(provider);
+    localStorage.setItem('lumora_byok_provider_config', JSON.stringify(provider));
+  };
+
+  const handleCitationClicked = (chunkId: string, pageNumber: number) => {
+    setTargetCitationChunkId(chunkId);
+  };
+
+  const handleTextActionTriggered = (
+    action: 'explain_eli5' | 'explain_advanced' | 'flashcard' | 'cornell_notes',
+    selectedText: string
+  ) => {
+    if (action === 'flashcard') {
+      setActiveStudyAction('flashcards');
+      setIsRightOpen(true);
+    } else if (action === 'cornell_notes') {
+      setActiveStudyAction('cornell_notes');
+      setIsRightOpen(true);
+    } else {
+      setSelectionTrigger({ action, text: selectedText });
+    }
+  };
+
+  const activeDoc = documents.find((d) => d.id === activeDocId) || null;
+
+  // Handbook Datasets
+  const currentFlashcards: Flashcard[] = activeDoc ? getHandbookFlashcards(activeDoc.id) : [];
+  const currentQuiz: QuizDeck | null = activeDoc ? getHandbookQuiz(activeDoc.id) : null;
+  const currentSummary: SummaryData | null = activeDoc ? getHandbookSummary(activeDoc.id) : null;
+  const currentCornellNotes: CornellNotesData | null = activeDoc ? getHandbookCornellNotes(activeDoc.id) : null;
+  const currentConceptComparison: ConceptComparisonData | null = activeDoc
+    ? getHandbookConceptComparison(activeDoc.id)
+    : null;
+  const currentTimeline: TimelineEvent[] = activeDoc ? getHandbookTimeline(activeDoc.id) : [];
+  const currentMindMap: MindMapNode | null = activeDoc ? getHandbookMindMap(activeDoc.id) : null;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Nav */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Sparkles className="h-4 w-4" />
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">Lumora</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href={ctaHref} className="link-quiet text-sm font-medium">
-            Sign in
-          </Link>
-          <Link href={ctaHref}>
-            <Button size="sm">{ctaLabel}</Button>
-          </Link>
-        </div>
-      </header>
+    <div className="flex h-screen w-screen bg-canvas overflow-hidden select-none">
+      {/* 1. Left Sidebar: Workspace & Document Library */}
+      {isLeftOpen && !isZenMode && (
+        <Sidebar
+          documents={documents}
+          activeDocId={activeDocId}
+          onSelectDocument={(id) => setActiveDocId(id)}
+          onOpenUpload={() => setIsUploadOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenOnboarding={() => setIsOnboardingOpen(true)}
+          onDeleteDocument={handleDeleteDocument}
+          onToggleSidebar={() => setIsLeftOpen(false)}
+        />
+      )}
 
-      {/* Hero */}
-      <section className="mx-auto max-w-4xl px-6 pb-16 pt-14 text-center sm:pt-20">
-        <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-          <Brain className="h-3.5 w-3.5 text-primary" />
-          The learning operating system
-        </div>
-        <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
-          Turn documents into{' '}
-          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            durable understanding
-          </span>
-          .
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-balance text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Lumora transforms any document into a guided curriculum with active recall,
-          spaced repetition, and measurable mastery — where every claim is traceable
-          back to the source.
-        </p>
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-          <Link href={ctaHref}>
-            <Button size="lg">
-              {ctaLabel}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="#how-it-works">
-            <Button variant="secondary" size="lg">
-              See how it works
-            </Button>
-          </Link>
-        </div>
-        <p className="mt-4 text-xs text-muted-foreground">
-          No API key required · runs on the local engine by default · your data stays yours
-        </p>
-      </section>
+      {/* 2. Center & Right Main Working Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Universal Top Workspace Bar */}
+        <header className="h-12 px-4 bg-surface border-b border-subtle flex items-center justify-between flex-shrink-0 z-10">
+          <div className="flex items-center space-x-2">
+            {!isLeftOpen && (
+              <button
+                onClick={() => setIsLeftOpen(true)}
+                title="Expand Sidebar (Cmd+\)"
+                className="p-1.5 rounded-md text-lumora-text-muted hover:text-lumora-text-primary hover:bg-elevated transition-colors"
+              >
+                <IconSidebarLeft size={16} />
+              </button>
+            )}
 
-      {/* Value strip */}
-      <section className="border-y border-border bg-card/40">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-6 py-10 sm:grid-cols-4">
-          {[
-            { icon: FileText, label: 'Document → Curriculum', sub: 'not chat' },
-            { icon: BookMarked, label: 'Active recall by default', sub: 'quizzes + flashcards' },
-            { icon: Repeat, label: 'Spaced repetition', sub: 'SM-2 scheduling' },
-            { icon: Target, label: 'Mastery tracking', sub: 'measurable progress' },
-          ].map((v) => (
-            <div key={v.label} className="flex items-start gap-3">
-              <v.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <div className="text-sm font-medium">{v.label}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">{v.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how-it-works" className="mx-auto max-w-6xl px-6 py-16">
-        <h2 className="text-center text-2xl font-semibold tracking-tight sm:text-3xl">
-          From raw information to mastery
-        </h2>
-        <p className="mx-auto mt-3 max-w-xl text-center text-sm text-muted-foreground">
-          The pipeline: <span className="text-foreground">Information → Understanding → Practice → Memory → Application → Mastery</span>
-        </p>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {STEPS.map((s, i) => (
-            <div key={s.title} className="surface-card relative p-5">
-              <span className="absolute right-4 top-4 font-mono text-xs text-muted-foreground/50">
-                0{i + 1}
+            {/* Document Title Breadcrumb */}
+            <div className="flex items-center space-x-1.5 text-xs">
+              <span className="text-lumora-text-muted font-medium">Workspace</span>
+              <span className="text-lumora-text-muted">/</span>
+              <span className="font-semibold text-lumora-text-primary truncate max-w-xs md:max-w-sm">
+                {activeDoc?.title || 'No Document Selected'}
               </span>
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <s.icon className="h-5 w-5" />
-              </div>
-              <h3 className="text-sm font-semibold">{s.title}</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{s.body}</p>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Differentiators */}
-      <section className="border-t border-border bg-card/40">
-        <div className="mx-auto max-w-4xl px-6 py-16">
-          <h2 className="text-center text-2xl font-semibold tracking-tight">
-            Why not just ChatGPT?
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-center text-sm text-muted-foreground">
-            A chat window answers. Lumora builds a system that makes you remember.
-          </p>
-          <div className="mt-8 overflow-hidden rounded-xl border border-border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Feature</th>
-                  <th className="px-4 py-3 font-medium text-success">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5" /> Lumora
-                    </span>
-                  </th>
-                  <th className="px-4 py-3 font-medium">Generic chat</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {DIFFERENTIATORS.map((d) => (
-                  <tr key={d.feature}>
-                    <td className="px-4 py-3 font-medium">{d.feature}</td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-success">
-                        <Check className="h-3.5 w-3.5" /> {d.lumora}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <X className="h-3.5 w-3.5 text-danger" /> {d.generic}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        </div>
-      </section>
 
-      {/* Final CTA */}
-      <section className="mx-auto max-w-3xl px-6 py-20 text-center">
-        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Bring your first document
-        </h2>
-        <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-          Upload a PDF, a set of notes, or a web article. Lumora builds your
-          curriculum in seconds.
-        </p>
-        <div className="mt-8">
-          <Link href={ctaHref}>
-            <Button size="lg">
-              <Search className="h-4 w-4" />
-              {ctaLabel}
-            </Button>
-          </Link>
-        </div>
-      </section>
+          {/* Quick Study Action Badges */}
+          <div className="hidden lg:flex items-center space-x-1">
+            <button
+              onClick={() => {
+                setActiveStudyAction('flashcards');
+                setIsRightOpen(true);
+              }}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center space-x-1 ${
+                activeStudyAction === 'flashcards' && isRightOpen
+                  ? 'bg-emerald-500/10 text-emerald-600 font-semibold'
+                  : 'text-lumora-text-secondary hover:text-lumora-text-primary'
+              }`}
+            >
+              <IconFlashcard size={13} />
+              <span>Flashcards</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveStudyAction('quiz');
+                setIsRightOpen(true);
+              }}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center space-x-1 ${
+                activeStudyAction === 'quiz' && isRightOpen
+                  ? 'bg-purple-500/10 text-purple-600 font-semibold'
+                  : 'text-lumora-text-secondary hover:text-lumora-text-primary'
+              }`}
+            >
+              <IconQuiz size={13} />
+              <span>Quiz</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveStudyAction('summarize');
+                setIsRightOpen(true);
+              }}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center space-x-1 ${
+                activeStudyAction === 'summarize' && isRightOpen
+                  ? 'bg-lumora-accent-subtle text-lumora-accent font-semibold'
+                  : 'text-lumora-text-secondary hover:text-lumora-text-primary'
+              }`}
+            >
+              <IconBrainSummary size={13} />
+              <span>Summary</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveStudyAction('cornell_notes');
+                setIsRightOpen(true);
+              }}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors flex items-center space-x-1 ${
+                activeStudyAction === 'cornell_notes' && isRightOpen
+                  ? 'bg-indigo-500/10 text-indigo-600 font-semibold'
+                  : 'text-lumora-text-secondary hover:text-lumora-text-primary'
+              }`}
+            >
+              <IconCornellNotes size={13} />
+              <span>Cornell</span>
+            </button>
+          </div>
 
-      <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
-        Lumora — document → curriculum, active recall, spaced repetition, measurable mastery.
-      </footer>
+          {/* Right Action Controls */}
+          <div className="flex items-center space-x-2">
+            {/* Tour & Guide button */}
+            <button
+              onClick={() => setIsOnboardingOpen(true)}
+              className="hidden md:flex items-center space-x-1 text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium hover:bg-amber-500/20 transition-colors"
+            >
+              <IconSparkles size={13} />
+              <span>Tour & Guide</span>
+            </button>
+
+            {/* Command Palette Trigger */}
+            <button
+              onClick={() => setIsCommandOpen(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-canvas border border-subtle text-xs text-lumora-text-muted hover:text-lumora-text-primary hover:border-strong transition-all shadow-xs"
+            >
+              <IconSearch size={13} />
+              <span className="hidden sm:inline">Search / Actions</span>
+              <kbd className="text-[10px] font-mono px-1 py-0.5 rounded bg-surface border border-subtle">
+                ⌘K
+              </kbd>
+            </button>
+
+            {/* Export Guide */}
+            <button
+              onClick={() => setIsExportOpen(true)}
+              title="Export Study Guide (Markdown/JSON)"
+              className="p-1.5 rounded-md text-lumora-text-secondary hover:text-lumora-text-primary hover:bg-elevated transition-colors"
+            >
+              <IconExport size={16} />
+            </button>
+
+            {/* Zen Mode */}
+            <button
+              onClick={toggleZenMode}
+              title="Toggle Zen Focus Mode (Cmd+Opt+Z)"
+              className={`p-1.5 rounded-md transition-colors ${
+                isZenMode
+                  ? 'bg-lumora-accent text-white'
+                  : 'text-lumora-text-secondary hover:text-lumora-text-primary hover:bg-elevated'
+              }`}
+            >
+              <IconZen size={16} />
+            </button>
+
+            {/* Progressive Auth / Cloud Sync */}
+            <button
+              onClick={() => setIsAuthOpen(true)}
+              className="hidden sm:flex text-xs px-2.5 py-1 rounded-md bg-lumora-accent-subtle text-lumora-accent font-medium hover:bg-lumora-accent hover:text-white transition-colors"
+            >
+              Sync
+            </button>
+
+            {/* Right Panel Toggle */}
+            {!isZenMode && (
+              <button
+                onClick={() => setIsRightOpen((r) => !r)}
+                title="Toggle Study Inspector (Cmd+Shift+\)"
+                className={`p-1.5 rounded-md transition-colors ${
+                  isRightOpen
+                    ? 'text-lumora-text-primary bg-elevated border border-subtle'
+                    : 'text-lumora-text-muted hover:text-lumora-text-primary hover:bg-elevated'
+                }`}
+              >
+                <IconSidebarRight size={16} />
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Center Canvas + AI Studio Split View */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Main Document & Reasoning Workspace */}
+          <main className="flex-1 flex flex-col min-w-0 h-full">
+            {/* Top 55%: Virtualized Document Viewer */}
+            <div className="flex-1 min-h-0 border-b border-subtle">
+              <DocumentViewer
+                document={activeDoc}
+                targetCitationChunkId={targetCitationChunkId}
+                onTextActionTriggered={handleTextActionTriggered}
+              />
+            </div>
+
+            {/* Bottom 45%: Grounded AI Reasoning Studio */}
+            <div className="h-64 md:h-72 flex-shrink-0">
+              <AIStudio
+                document={activeDoc}
+                activeProvider={activeProvider}
+                onCitationClicked={handleCitationClicked}
+                onOpenStudyActionRunner={(action) => {
+                  setActiveStudyAction(action);
+                  setIsRightOpen(true);
+                }}
+                externalPromptTrigger={selectionTrigger}
+              />
+            </div>
+          </main>
+
+          {/* 3. Right Inspector & Study Action Panel */}
+          {isRightOpen && !isZenMode && activeDoc && (
+            <aside className="w-80 md:w-96 flex-shrink-0 border-l border-subtle bg-surface h-full overflow-hidden flex flex-col animate-fade-in">
+              {activeStudyAction === 'flashcards' && (
+                <FlashcardRunner
+                  document={activeDoc}
+                  flashcards={currentFlashcards}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'quiz' && currentQuiz && (
+                <QuizRunner
+                  document={activeDoc}
+                  quizDeck={currentQuiz}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'summarize' && currentSummary && (
+                <SummaryView
+                  document={activeDoc}
+                  summaryData={currentSummary}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'cornell_notes' && currentCornellNotes && (
+                <CornellNotesView
+                  document={activeDoc}
+                  notesData={currentCornellNotes}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'compare_concepts' && currentConceptComparison && (
+                <ConceptComparisonView
+                  document={activeDoc}
+                  comparisonData={currentConceptComparison}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'timeline' && (
+                <TimelineView
+                  document={activeDoc}
+                  events={currentTimeline}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+
+              {activeStudyAction === 'mind_map' && currentMindMap && (
+                <MindMapView
+                  document={activeDoc}
+                  rootNode={currentMindMap}
+                  onCitationClicked={handleCitationClicked}
+                  onClose={() => setIsRightOpen(false)}
+                />
+              )}
+            </aside>
+          )}
+        </div>
+      </div>
+
+      {/* Global Modals & Onboarding Tour */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => {
+          setIsOnboardingOpen(false);
+          localStorage.setItem('lumora_has_seen_onboarding_v1', 'true');
+        }}
+        onSelectHandbook={(doc) => {
+          setDocuments([doc]);
+          setActiveDocId(doc.id);
+        }}
+        onOpenUpload={() => setIsUploadOpen(true)}
+        onStartTour={() => setIsTourActive(true)}
+      />
+
+      <SpotlightTour
+        isActive={isTourActive}
+        onComplete={() => setIsTourActive(false)}
+      />
+
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onDocumentAdded={handleDocumentAdded}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        activeProvider={activeProvider}
+        onSaveProvider={handleSaveProvider}
+      />
+
+      <CommandPalette
+        isOpen={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        documents={documents}
+        onSelectDocument={(id) => setActiveDocId(id)}
+        onTriggerStudyAction={(action) => {
+          setActiveStudyAction(action);
+          setIsRightOpen(true);
+        }}
+        onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenOnboarding={() => setIsOnboardingOpen(true)}
+      />
+
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        document={activeDoc}
+        flashcards={currentFlashcards}
+        quizDeck={currentQuiz}
+        summaryData={currentSummary}
+        cornellNotes={currentCornellNotes}
+      />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
     </div>
   );
 }

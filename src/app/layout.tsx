@@ -1,40 +1,31 @@
-import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import type { Metadata } from 'next';
 import './globals.css';
-import { ThemeProvider } from '@/components/theme-provider';
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const jetbrains = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-jetbrains',
-  display: 'swap',
-});
+import { ThemeProvider } from '@/shared/theme/ThemeProvider';
 
 export const metadata: Metadata = {
-  title: {
-    default: 'Lumora — The Learning Operating System',
-    template: '%s · Lumora',
+  title: 'Lumora — Learning Operating System',
+  description: 'An AI-powered learning workspace designed to transform information into understanding.',
+  icons: {
+    icon: '/favicon.ico',
   },
-  description:
-    'Turn documents into guided learning paths with active recall, spaced repetition, and measurable mastery — every claim traceable to the source.',
-  keywords: ['learning', 'spaced repetition', 'active recall', 'mastery', 'Lumora'],
 };
 
-export const viewport: Viewport = {
-  themeColor: '#0a0b0d',
-  width: 'device-width',
-  initialScale: 1,
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.variable} ${jetbrains.variable} font-sans`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="bg-canvas text-lumora-text-primary antialiased selection:bg-lumora-citation selection:text-lumora-text-primary">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
